@@ -1,4 +1,4 @@
-# Airbnb Price Prediction
+# Short-Stay-Price-Prediction
 
 ## Description
 
