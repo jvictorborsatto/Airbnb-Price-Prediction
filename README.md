@@ -39,7 +39,7 @@ The project is organized as three sequential notebooks:
 
 ---
 
-## 2. Full Set Model (Predictions considering latitude/longitude)
+## 2. Model optimization
 
 **Goal:** train a single global model on numeric features (including latitude/longitude) and find the best algorithm and hyperparameters.
 
@@ -97,16 +97,22 @@ The project is organized as three sequential notebooks:
 
 **Steps:**
 - Loaded the three regional subsets produced in step 1.
-- For each region, built numeric features plus `room_type` and `property_type` (label-encoded), and dropped leakage-prone / redundant columns (`id`, `host_id`, `host_listings_count`, `availability_30/60/90/365`).
-- Trained one **LightGBM** model per region (`objective='poisson'`, 500 estimators, learning_rate 0.2, num_leaves 64, max_depth 8).
-- Feature importance for the Europe model again confirmed **longitude, latitude, and host_total_listings_count** as top predictors, with `number_of_reviews` and `property_type` also contributing meaningfully.
+- Unlike the Full Set model (numeric features only), this notebook adds **two new categorical features**: `room_type` and `property_type`. Since LightGBM needs numeric input, both were converted with `LabelEncoder` before training — this lets the region models capture pricing differences between, say, an entire home vs. a shared room, or an apartment vs. a villa, on top of the geographic/numeric signal.
+- Also dropped leakage-prone / redundant columns (`id`, `host_id`, `host_listings_count`, `availability_30/60/90/365`) from each region's feature set, mirroring the cleanup done for the Full Set model.
+- Trained one **LightGBM** model per region (`objective='poisson'`, 500 estimators, learning_rate 0.2, num_leaves 64, max_depth 8), each on its own train/validation split. The `poisson` objective was used since price is a strictly positive, right-skewed target — a better fit than the default regression objective for this kind of variable.
+- Resulting RMSE by region: **Europe 94.19**, **America 99.09**, and **Australia 112.70** — Europe came out with the lowest error, likely helped by having by far the largest training set (83,854 rows vs. 37,398 for America and only 7,006 for Australia).
+
+| Region | Train size | MAE | RMSE | R² |
+|---|---|---|---|---|
+| Europe | 83,854 | 53.09 | 94.19 | 0.656 |
+| America | 37,398 | 61.55 | 99.09 | 0.701 |
+| Australia | 7,006 | 76.58 | 112.70 | 0.657 |
 
 <img width="1280" height="880" alt="04_feature_importance_europe" src="https://github.com/user-attachments/assets/ef35ba5c-3f7c-41da-9597-a250b0bb7d9e" />
 
+- Compared against the **Full Set (global)** model (MAE 67.02 / RMSE 108.50 / R² 0.694), the region-sensitive models come out **ahead in Europe and America** — both in RMSE and in R² — and roughly on par in Australia, where the much smaller sample size likely limits how much the model can specialize. This supports the idea that letting the model specialize on regional pricing dynamics helps, at least where there's enough data per region.
+- Feature importance for the Europe model again confirmed **longitude, latitude, and host_total_listings_count** as top predictors, with the newly added `property_type` also contributing meaningfully — more than `room_type`, suggesting the type of property matters more for price than whether it's shared or private.
 
-- Visualized predicted vs. actual prices for Australia with a `plotly` scatter plot annotated with RMSE/R² (interactive chart, same note as above — can be re-embedded as a static image if exported or if the raw CSV is shared).
-
----
 
 ## Key Findings
 
@@ -114,7 +120,7 @@ The project is organized as three sequential notebooks:
 - **LightGBM was the best trade-off between accuracy and training speed**, and was used as the model of choice going forward.
 - **Geographic location (latitude/longitude) is consistently the strongest predictor of price**, ahead of physical listing attributes like bedrooms/bathrooms.
 - **Identifier columns (`id`, `host_id`) can leak information** and inflate feature importance without representing real signal — important to catch and remove during feature selection.
-- The **region-sensitive approach** was explored to test whether localized models beat a single global model — see the note above regarding a variable-reuse bug in the America/Australia cells that should be fixed to get a clean, trustworthy comparison.
+- The **region-sensitive approach outperforms the single global model** in Europe and America (lower error, higher R²), suggesting that regional pricing dynamics are distinct enough to benefit from dedicated models. Australia, with a much smaller training set, performs roughly on par with the global model — likely needs more data or its own tuning pass.
 
 ## Tech Stack
 
